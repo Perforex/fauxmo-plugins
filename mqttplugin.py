@@ -1,10 +1,11 @@
 """ Fauxmo plugin for simple MQTT requests. Requires paho-mqtt v1.3.1 (https://www.eclipse.org/paho/clients/python/docs/)
 
-The on and off methods publish a value to the given MQTT queue. The get_status method 
-subscribes to an MQTT queue to asynchronously receive the status published from the device. 
-If the device doesn’t publish a status via MQTT then omit the state_cmd and the plugin will 
+The on and off methods publish a value to the given MQTT queue. The plugin
+subscribes to an MQTT topic state_topic to asynchronously receive the status published from the device.
+If the device doesn’t publish a status via MQTT then omit the state_cmd and the plugin will
 return a status of “unknown”. The status received from the device is passed back unchanged
-to fauxmo which is expecting “on”, “off” or “unknown”.
+to fauxmo which is expecting “on”, “off” or “unknown”. The exception to this is the status
+returned is either 0 or 1 which will get translated to "off" and "on" respectively.
 
 It is expected that MQTTserver and MQTTport are set at the plugin level (example below).
 Whilst checks are performed to ensure the existence of these variables the behaviour of
@@ -25,7 +26,8 @@ Sample json.config:
                     "port":12349,
                     "on_cmd":["Home/Light/Study01",1],
                     "off_cmd":["Home/Light/Study01",0],
-                    "state_cmd":["Home/Light/Study01/Stat"],
+                    "state_cmd":["Home/Light/Study01",""],
+                    "state_topic":"[Home/Light/Study01/Stat"]
                     "name":"Study Light"
                 }
             ]
@@ -33,9 +35,9 @@ Sample json.config:
     }
 }
 
-The on and off commands are an array of two elements where the first is the queue and the second 
+The on and off commands are an array of two elements where the first is the queue and the second
 is the value to be published to the queue. The state command only requires the queue to which
-the status is published and this plugin subscribes. 
+the status is published and this plugin subscribes.
 
 Perforex Jan 2018
 """
@@ -54,6 +56,7 @@ class MQTTPlugin(FauxmoPlugin):
             off_cmd: str,
             on_cmd: str,
             state_cmd: str = None,
+            state_topic: str = None,
             port:int,
             MQTTserver: str = None,
             MQTTport: int = None,
@@ -62,53 +65,56 @@ class MQTTPlugin(FauxmoPlugin):
         self.on_cmd = on_cmd
         self.off_cmd = off_cmd
         self.state_cmd = state_cmd
+        self.state_topic = state_topic
         self.qserver = MQTTserver
         self.qport = MQTTport
         self.status = "unknown"
         self.client = mqtt.Client()
         super().__init__(name=name,port=port)
-		
+
         self.client.connect(self.qserver,self.qport,60)
         self.client.on_message = self.on_message
-        self.client.subscribe(self.state_cmd[0])
-        self.client.loop_start() 
-		
+        if state_topic is not None:
+                self.client.subscribe(self.state_topic[0])
+        if state_cmd is not None:
+                self.client.publish(self.state_cmd[0],self.state_cmd[1])
+        self.client.loop_start()
+
         if not self.check_mqtt(): return False
 
     def on_message(self,client, userdata, msg):
         self.status=msg.payload.decode('utf-8')
+        print ("MQTT RX: " + msg.topic + " payload " + self.status)
+        if self.status == "1":
+            self.status = 'on'
+        elif self.status == "0":
+            self.status = 'off'
 
     def on(self) -> bool:
 
-        self.client.publish(self.on_cmd[0],self.on_cmd[1]);
+        self.client.publish(self.on_cmd[0],self.on_cmd[1])
 
         return True
 
     def off(self) -> bool:
 
-        self.client.publish(self.off_cmd[0],self.off_cmd[1]);
+        self.client.publish(self.off_cmd[0],self.off_cmd[1])
 
         return True
 
     def get_state(self) -> str:
-        print( "MQTT: Get State")
-
-        if(self.state_cmd is None): return "unknown"
-
-        self.client.on_message = self.on_message
-        self.client.subscribe(self.state_cmd[0])
-
+        logger.info( "MQTT: Get State - self.status is " + self.status)
         return self.status
 
     def check_mqtt(self) -> bool:
 
         logger = logging.getLogger("fauxmo")
-        if(self.qserver is None): 
+        if(self.qserver is None):
             logger.error("MQTTserver not provided in config.json.\n")
-            return False    
+            return False
 
-        if(self.qport is None): 
+        if(self.qport is None):
             logger.error("MQTTport not provided in config.json.\n")
             return False
-			
-        return True                   
+
+        return True
