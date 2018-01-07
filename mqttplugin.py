@@ -26,8 +26,8 @@ Sample json.config:
                     "port":12349,
                     "on_cmd":["Home/Light/Study01",1],
                     "off_cmd":["Home/Light/Study01",0],
-                    "state_cmd":["Home/Light/Study01"],
-                    "state_topic":"Home/Light/Study01/Stat"]
+                    "state_cmd":["Home/Light/Study01",""],
+                    "state_topic":"[Home/Light/Study01/Stat"]
                     "name":"Study Light"
                 }
             ]
@@ -74,14 +74,17 @@ class MQTTPlugin(FauxmoPlugin):
 
         self.client.connect(self.qserver,self.qport,60)
         self.client.on_message = self.on_message
-        self.client.subscribe(self.state_topic[0])
+        if state_topic is not None:
+                self.client.subscribe(self.state_topic[0])
+        if state_cmd is not None:
+                self.client.publish(self.state_cmd[0],self.state_cmd[1])
         self.client.loop_start()
 
         if not self.check_mqtt(): return False
 
     def on_message(self,client, userdata, msg):
         self.status=msg.payload.decode('utf-8')
-        print ("MQTT: status payload " + self.status)
+        print ("MQTT RX: " + msg.topic + " payload " + self.status)
         if self.status == "1":
             self.status = 'on'
         elif self.status == "0":
@@ -89,18 +92,18 @@ class MQTTPlugin(FauxmoPlugin):
 
     def on(self) -> bool:
 
-        self.client.publish(self.on_cmd[0],self.on_cmd[1]);
+        self.client.publish(self.on_cmd[0],self.on_cmd[1])
 
         return True
 
     def off(self) -> bool:
 
-        self.client.publish(self.off_cmd[0],self.off_cmd[1]);
+        self.client.publish(self.off_cmd[0],self.off_cmd[1])
 
         return True
 
     def get_state(self) -> str:
-        print( "MQTT: Get State - self.status is " + self.status)
+        logger.info( "MQTT: Get State - self.status is " + self.status)
         return self.status
 
     def check_mqtt(self) -> bool:
