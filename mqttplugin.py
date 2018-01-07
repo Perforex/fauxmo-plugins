@@ -1,10 +1,11 @@
 """ Fauxmo plugin for simple MQTT requests. Requires paho-mqtt v1.3.1 (https://www.eclipse.org/paho/clients/python/docs/)
 
-The on and off methods publish a value to the given MQTT queue. The get_status method
-subscribes to an MQTT queue to asynchronously receive the status published from the device.
+The on and off methods publish a value to the given MQTT queue. The plugin
+subscribes to an MQTT topic state_topic to asynchronously receive the status published from the device.
 If the device doesn’t publish a status via MQTT then omit the state_cmd and the plugin will
 return a status of “unknown”. The status received from the device is passed back unchanged
-to fauxmo which is expecting “on”, “off” or “unknown”.
+to fauxmo which is expecting “on”, “off” or “unknown”. The exception to this is the status
+returned is either 0 or 1 which will get translated to "off" and "on" respectively.
 
 It is expected that MQTTserver and MQTTport are set at the plugin level (example below).
 Whilst checks are performed to ensure the existence of these variables the behaviour of
@@ -83,7 +84,7 @@ class MQTTPlugin(FauxmoPlugin):
         print ("MQTT: status payload " + self.status)
         if self.status == "1":
             self.status = 'on'
-        else:
+        elif self.status == "0":
             self.status = 'off'
 
     def on(self) -> bool:
